@@ -50,6 +50,11 @@ function csvEsc(v: string | number | undefined | null): string {
   return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
 }
 
+/** Montant en euros au format tableur FR (35,00). */
+function eur(cents: number): string {
+  return (cents / 100).toFixed(2).replace('.', ',')
+}
+
 export function tournamentsCsv(ts: Tournament[], partnersById: Record<string, string>): string {
   const head = [
     'date', 'fin', 'nom', 'catégorie', 'épreuve', 'club', 'ville', 'statut', 'partenaire', 'position',
@@ -61,8 +66,8 @@ export function tournamentsCsv(ts: Tournament[], partnersById: Record<string, st
     .sort((a, b) => a.date.localeCompare(b.date))
     .map((t) => {
       const ins = (kind: string, mode: string) =>
-        t.expenses.filter((e: Expense) => e.kind === kind && e.mode === mode).reduce((s, e) => s + e.amount, 0) / 100
-      const payeTotal = t.expenses.filter((e) => e.mode === 'paye').reduce((s, e) => s + e.amount, 0) / 100
+        eur(t.expenses.filter((e: Expense) => e.kind === kind && e.mode === mode).reduce((s, e) => s + e.amount, 0))
+      const payeTotal = eur(t.expenses.filter((e) => e.mode === 'paye').reduce((s, e) => s + e.amount, 0))
       return [
         t.date, t.endDate ?? '', t.name, t.category, t.gender, t.club, t.city, STATUS_LABELS[t.status],
         t.partnerId ? partnersById[t.partnerId] ?? '' : '', POSITION_LABELS[t.position],
@@ -81,7 +86,7 @@ export function expensesCsv(ts: Tournament[]): string {
   for (const t of ts) {
     for (const e of t.expenses) {
       const kind = EXPENSE_KINDS.find((k) => k.id === e.kind)?.label ?? e.kind
-      rows.push([t.date, t.name, kind, e.mode === 'paye' ? 'payé' : 'prévu', (e.amount / 100).toFixed(2), e.paidOn ?? '', STATUS_LABELS[t.status]].map(csvEsc))
+      rows.push([t.date, t.name, kind, e.mode === 'paye' ? 'payé' : 'prévu', eur(e.amount), e.paidOn ?? '', STATUS_LABELS[t.status]].map(csvEsc))
     }
   }
   return [head.join(';'), ...rows.map((r) => r.join(';'))].join('\r\n')
