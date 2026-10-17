@@ -33,6 +33,15 @@ export const STATUS_LABELS: Record<TournamentStatus, string> = {
   annule: 'Annulé',
 }
 
+export const STATUS_ORDER: TournamentStatus[] = [
+  'envisage',
+  'a_confirmer',
+  'liste_attente',
+  'inscrit',
+  'joue',
+  'annule',
+]
+
 export type TPosition = 'droite' | 'gauche' | 'alternee' | 'inconnue'
 
 export const POSITION_LABELS: Record<TPosition, string> = {
