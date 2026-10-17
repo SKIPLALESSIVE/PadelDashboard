@@ -10,26 +10,39 @@ import { rankingOn, nextExpiry, simulateTotal } from '../lib/fft/ranking'
 import { computePoints } from '../lib/fft/points'
 import { CATEGORIES, type TCategory, type TGender } from '../types'
 
+/** 25 000 → « 25 000 » : séparateur français, jamais un « 25K » ambigu. */
+const frNumberShort = (v: number): string => new Intl.NumberFormat('fr-FR').format(Math.round(v))
+
 export default function RankingPage() {
   const tournaments = useLiveQuery(() => db.tournaments.toArray(), []) ?? []
   const official = useLiveQuery(() => db.officialRankings.orderBy('date').reverse().toArray(), []) ?? []
   const [simOpen, setSimOpen] = useState(false)
 
+  // Simulation par défaut disponible dans le modal dédié (prévisionnel).
   const today = format(new Date(), 'yyyy-MM-dd')
-  const snap = useMemo(() => rankingOn(tournaments, today), [tournaments, today])  // Simulation par défaut disponible dans le modal dédié (prévisionnel).
+  const snap = useMemo(() => rankingOn(tournaments, today), [tournaments, today])
 
-  // courbe : total local calculé dans le temps (mensuel) vs rang officiel saisi
+  // courbe : total local calculé dans le temps (mensuel) vs rang officiel saisi.
+  // Les entrées [DÉMO] sont exclues du graphe (jamais confondues avec vos vrais rangs).
   const chart = useMemo(() => {
     const months: { m: string; label: string; total: number; rank?: number }[] = []
     for (let i = 14; i >= 0; i--) {
       const dt = format(addMonths(new Date(), -i), 'yyyy-MM-dd')
       const s = rankingOn(tournaments, dt)
       const m = dt.slice(0, 7)
-      const offAtMonth = official.filter((o) => o.date.slice(0, 7) === m).sort((a, b) => b.date.localeCompare(a.date))[0]
+      const offAtMonth = official
+        .filter((o) => !o.note?.includes('[DÉMO]'))
+        .filter((o) => o.date.slice(0, 7) === m)
+        .sort((a, b) => b.date.localeCompare(a.date))[0]
       months.push({ m, label: fmtDateShort(dt), total: s.total, rank: offAtMonth?.rank })
     }
     return months
   }, [tournaments, official])
+
+  // Échelle de l'axe « rang » : calée sur les SEULS rangs saisis, jamais une échelle générique.
+  const realRanks = chart.map((c) => c.rank).filter((r): r is number => r != null)
+  const chartMinRank = realRanks.length ? Math.min(...realRanks) : 0
+  const chartMaxRank = realRanks.length ? Math.max(...realRanks) : 1
 
   const latestOfficial = official[0]
 
@@ -137,10 +150,24 @@ export default function RankingPage() {
               <CartesianGrid stroke="#23304a" strokeDasharray="3 3" />
               <XAxis dataKey="label" tick={{ fill: '#8ea0bd', fontSize: 11 }} />
               <YAxis yAxisId="pts" tick={{ fill: '#a3e635', fontSize: 11 }} />
-              <YAxis yAxisId="rk" orientation="right" reversed tick={{ fill: '#8ea0bd', fontSize: 11 }} label={{ value: 'rang', angle: -90, position: 'insideRight', fill: '#8ea0bd', fontSize: 10 }} />
+              <YAxis
+                yAxisId="rk"
+                orientation="right"
+                reversed
+                // Échelle réellement calée sur les rangs saisis (pas une échelle générique 0..25k)
+                domain={[
+                  (dataMin: number) => dataMin - 0.08 * (chartMaxRank - chartMinRank || 1),
+                  (dataMax: number) => dataMax + 0.08 * (chartMaxRank - chartMinRank || 1),
+                ]}
+                tickFormatter={frNumberShort}
+                tick={{ fill: '#8ea0bd', fontSize: 11 }}
+                label={{ value: 'rang saisi', angle: -90, position: 'insideRight', fill: '#8ea0bd', fontSize: 10 }}
+              />
               <Tooltip
                 contentStyle={{ background: '#101828', border: '1px solid #23304a', borderRadius: 8, color: '#e6ecf5' }}
-                formatter={(v: number | string, name) => (name === 'total' ? [`${v} pts`, 'Somme locale'] : [`#${v}`, 'Rang officiel'])}
+                formatter={(v: number | string, name) =>
+                  name === 'total' ? [`${v} pts`, 'Somme locale'] : [`#${new Intl.NumberFormat('fr-FR').format(Number(v))}`, 'Rang officiel saisi']
+                }
               />
               <Line yAxisId="pts" type="monotone" dataKey="total" stroke="#a3e635" strokeWidth={2} dot={false} />
               <Line yAxisId="rk" type="monotone" dataKey="rank" stroke="#60a5fa" strokeWidth={2} dot connectNulls={false} />
@@ -148,9 +175,27 @@ export default function RankingPage() {
           </ResponsiveContainer>
         </div>
         <p className="mt-2 text-xs text-slate-500">
-          Une baisse du rang (numérique) est une amélioration. La ligne orange = somme locale des 12 meilleurs ; la bleue =
-          rang officiel saisi par vous (Ten'Up). L'app ne prétend jamais déduire le rang officiel à elle seule.
+          Une baisse du rang (numérique) est une amélioration. La ligne verte = somme locale des 12 meilleurs ; la bleue =
+          rang officiel <b>saisi par vous</b> (Ten'Up). L'app ne prétend jamais déduire le rang officiel à elle seule.
         </p>
+        {/* Récap explicite des rangs tracés : impossible de confondre une échelle avec sa valeur */}
+        {realRanks.length > 0 && (
+          <p className="mt-1 text-xs text-slate-400">
+            Rangs saisis tracés sur l'axe droit :{' '}
+            {official
+              .filter((o) => !o.note?.includes('[DÉMO]'))
+              .filter((o) => chart.some((c) => c.rank === o.rank))
+              .sort((a, b) => b.date.localeCompare(a.date))
+              .map((o) => `#${frNumberShort(o.rank)} (${fmtDate(o.date)})`)
+              .join(' · ')}
+          </p>
+        )}
+        {official.some((o) => o.note?.includes('[DÉMO]')) && (
+          <p className="mt-1 text-xs text-amber-300">
+            ⚠ Des entrées [DÉMO] existent dans l'historique : elles sont exclues de ce graphe (effaçables dans
+            Paramètres → données de démonstration).
+          </p>
+        )}
       </Card>
 
       <OfficialRankingModalOpener />
