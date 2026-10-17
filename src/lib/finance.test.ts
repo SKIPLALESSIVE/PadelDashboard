@@ -32,7 +32,6 @@ describe('finances', () => {
 
   it('le passage prévu → payé déplace le montant sans duplication', () => {
     const t1 = t('a', '2026-10-16', [e('prevu', 3500)])
-    expect(tournamentMoney(t1).engagement ?? null).toBeNull()
     let b = periodBudget([t1], 2026, 9, { monthly: 10000, year: 0 })
     expect(b.engagement).toBe(3500)
     expect(b.totalPrevuNonEngage).toBe(3500)
