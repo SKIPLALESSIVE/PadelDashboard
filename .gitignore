@@ -1,0 +1,7 @@
+node_modules/
+dist/
+*.local
+*.tsbuildinfo
+.js-vite-cache
+.DS_Store
+coverage/
