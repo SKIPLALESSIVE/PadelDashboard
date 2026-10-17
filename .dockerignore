@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.git/
+.github/
+*.tsbuildinfo
+*.log
+coverage/
+.dockerignore
+Dockerfile
+docker-start.sh
+docker-stop.sh

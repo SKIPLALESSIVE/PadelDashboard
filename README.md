@@ -101,3 +101,14 @@ src/
 
 *Pas de Ten'Up/4PADEL en synchronisation automatique* : l'app propose des liens vers les fiches et la
 saisie manuelle du classement ; aucune API non officielle, aucun contournement.
+
+## Lancer dans Docker
+
+```bash
+./docker-start.sh          # build + run sur le port 8080 (./docker-start.sh 3000 pour un autre port)
+./docker-stop.sh           # arrêt du conteneur (l'image reste, relance instantanée)
+./docker-stop.sh --clean   # arrêt + suppression de l'image
+```
+
+Le conteneur (nginx) sert le build statique avec fallback SPA ; les scripts recréent l'image
+automatiquement si le code a changé depuis le dernier build.
