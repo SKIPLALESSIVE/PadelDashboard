@@ -12,6 +12,7 @@ import Stats from './pages/Stats'
 import Settings from './pages/Settings'
 import { TournamentModal } from './components/TournamentModal'
 import { Onboarding } from './components/Onboarding'
+import { storageGet, storageSet } from './lib/storage'
 
 export type TabId =
   | 'dashboard'
@@ -35,14 +36,14 @@ const TABS: { id: TabId; label: string; icon: string }[] = [
 ]
 
 export default function App() {
-  const [tab, setTabRaw] = useState<TabId>(() => (localStorage.getItem('pt.tab') as TabId) || 'dashboard')
+  const [tab, setTabRaw] = useState<TabId>(() => (storageGet('pt.tab') as TabId | null) || 'dashboard')
   const [modalOpen, setModalOpen] = useState(false)
   const [modalDate, setModalDate] = useState<string | undefined>()
   const [onboarding, setOnboarding] = useState(false)
 
   useEffect(() => {
-    localStorage.setItem('pt.tab', tab)
-    window.scrollTo({ top: 0 })
+    storageSet('pt.tab', tab)
+    try { window.scrollTo({ top: 0 }) } catch { /* environnement sans scroll */ }
   }, [tab])
 
   useEffect(() => {
