@@ -87,21 +87,28 @@ export default function Finance() {
         </button>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Stat value={fmtMoney(yearly.totalPaye + seances.paye)} label="dépense réelle (payé)" sub={`dont ${fmtMoney(seances.paye)} de séances`} accent />
-        <Stat value={fmtMoney(yearly.totalPrevuNonEngage + seances.prevu)} label="prévu non payé" sub="n'additionne jamais les deux" />
-        <Stat
-          value={fmtMoney(yearly.engagement + seances.engagement)}
-          label="engagement total (tournois + séances)"
-          sub={`budget ${year} : ${fmtMoney(yearly.budget)}`}
-        />
-        <Stat
-          value={yearly.restant - seances.engagement >= 0 ? fmtMoney(yearly.restant - seances.engagement) : `−${fmtMoney(seances.engagement - yearly.restant)}`}
-          label={yearly.restant - seances.engagement >= 0 ? 'budget restant' : 'dépassement'}
-          sub="séances incluses"
-          accent={yearly.restant - seances.engagement < 0}
-        />
-      </div>
+      {/* Budget non paramétré (0 €) : on n'affiche jamais un faux déficit. */}
+      {(() => {
+        const budgetOk = yearly.budget > 0
+        const reste = yearly.restant - seances.engagement
+        return (
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            <Stat value={fmtMoney(yearly.totalPaye + seances.paye)} label="dépense réelle (payé)" sub={`dont ${fmtMoney(seances.paye)} de séances`} accent />
+            <Stat value={fmtMoney(yearly.totalPrevuNonEngage + seances.prevu)} label="prévu non payé" sub="n'additionne jamais les deux" />
+            <Stat
+              value={fmtMoney(yearly.engagement + seances.engagement)}
+              label="engagement total (tournois + séances)"
+              sub={budgetOk ? `budget ${year} : ${fmtMoney(yearly.budget)}` : 'budget non paramétré'}
+            />
+            <Stat
+              value={budgetOk ? (reste >= 0 ? fmtMoney(reste) : `−${fmtMoney(-reste)}`) : '—'}
+              label={budgetOk ? (reste >= 0 ? 'budget restant' : 'dépassement') : 'budget restant'}
+              sub={budgetOk ? 'tournois + séances incluses' : 'cliquez ⚙ Budget pour le définir'}
+              accent={budgetOk && reste < 0}
+            />
+          </div>
+        )
+      })()}
 
       <Card>
         <CardTitle>Dépenses par mois — {year}</CardTitle>

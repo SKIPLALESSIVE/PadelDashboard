@@ -58,11 +58,13 @@ export function resultLine(t: Tournament, _dateT: string): ResultLine | null {
   }
 }
 
-/** Renvoie true si le résultat est encore dans la fenêtre glissante à la date dateT. */
+/** Renvoie true si le résultat est encore dans la fenêtre glissante à la date dateT.
+ *  Un résultat POSTÉRIEUR à la date de calcul n’est jamais compté : le total d’un mois passé
+ *  ne doit pas inclure des tournois joués après ce mois. */
 export function inWindow(t: Tournament, dateT: string): boolean {
   const T = parseISO(dateT)
   const limit = addMonths(T, -12)
-  return parseISO(t.date) > limit
+  return parseISO(t.date) > limit && parseISO(t.date) <= T
 }
 
 export function nextExpiry(t: Tournament): string {
@@ -100,7 +102,9 @@ export function rankingOn(
 }
 
 function inWindowByDate(dateD: string, dateT: string): boolean {
-  return parseISO(dateD) > addMonths(parseISO(dateT), -12)
+  const D = parseISO(dateD)
+  const T = parseISO(dateT)
+  return D > addMonths(T, -12) && D <= T
 }
 
 export type RankingWindow = '12mois' | 'tout'

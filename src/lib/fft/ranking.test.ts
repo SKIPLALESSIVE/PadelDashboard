@@ -56,6 +56,16 @@ describe('classement glissant', () => {
     expect(inWindow(plus1, AT)).toBe(true)
   })
 
+  it('un résultat POSTÉRIEUR à la date de calcul ne compte jamais (graphe du passé juste)', () => {
+    // le total de juillet 2025 ne doit pas être gonflé par un tournoi d’octobre 2026
+    const futurPourT = t('f', '2026-10-16', 34)
+    expect(inWindow(futurPourT, '2025-07-01')).toBe(false)
+    const snap = rankingOn([futurPourT], '2025-07-01')
+    expect(snap.total).toBe(0)
+    // … mais il compte normalement une fois la date atteinte
+    expect(inWindow(futurPourT, '2026-11-01')).toBe(true)
+  })
+
   it('au-delà de 12 mois, sans fenêtre, tout compte (vue historique)', () => {
     const snap = rankingOn([t('a', '2024-01-01', 100)], AT, 'tout')
     expect(snap.total).toBe(100)
