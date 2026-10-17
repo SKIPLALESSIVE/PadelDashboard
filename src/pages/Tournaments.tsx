@@ -4,6 +4,7 @@ import { db, uid, upsertTournament } from '../db/db'
 import { Card, CardTitle, EmptyState, StatusBadge, CategoryBadge, Modal } from '../components/ui'
 import { fmtDate, fmtMoney } from '../lib/format'
 import { computePoints } from '../lib/fft/points'
+import { isIncoherentPlace } from '../lib/placement'
 import { tournamentMoney } from '../lib/finance'
 import { CATEGORIES, STATUS_LABELS, STATUS_ORDER, type TCategory, type Tournament, type TournamentStatus } from '../types'
 
@@ -142,6 +143,11 @@ export default function Tournaments({ onOpenCreate, onEdit }: { onOpenCreate: ()
                       {t.pairs ? ` · ${t.pairs} paires` : ''}
                       {t.place ? ` · ${t.place}${t.pairs ? `/` + t.pairs : ''}` : ''}
                       {t.status === 'joue' && t.wins != null && t.matchesPlayed ? ` · ${t.wins}/${t.matchesPlayed}` : ''}
+                    {isIncoherentPlace(t.place, t.pairs) && (
+                      <span className="ml-1 rounded bg-amber-400/20 px-1.5 py-0.5 text-[10px] font-semibold text-amber-300">
+                        ⚠ place {t.place} &gt; {t.pairs} paires — corrigez
+                      </span>
+                    )}
                     </div>
                   </div>
                   <div className="shrink-0 text-right">

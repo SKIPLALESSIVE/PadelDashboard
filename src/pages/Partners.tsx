@@ -5,6 +5,7 @@ import { Card, CardTitle, EmptyState, Modal, Stat } from '../components/ui'
 import { fmtDate, fmtMoney } from '../lib/format'
 import { tournamentMoney } from '../lib/finance'
 import { computePoints } from '../lib/fft/points'
+import { placeRatio } from '../lib/placement'
 import type { Partner, TCategory, Tournament } from '../types'
 
 interface PartnerStats {
@@ -21,16 +22,16 @@ interface PartnerStats {
   moneyAvg: number | null
 }
 
-function lsPlace(t: Tournament): number | null {
-  if (t.status !== 'joue' || t.place == null) return null
-  if (t.pairs && t.pairs > 0) return t.place / t.pairs
-  return null
-}
-
 function statsFor(list: Tournament[]): PartnerStats {
   const played = list.filter((t) => t.status === 'joue')
-  const places = played.filter((t) => t.place != null).sort((a, b) => (a.place ?? 0) - (b.place ?? 0))
-  const rel = played.map(lsPlace).filter((x): x is number => x != null).sort((a, b) => a - b)
+  // Données incohérentes (place > paires) exclues des moyennes et des bornes
+  const places = played
+    .filter((t) => t.place != null && t.pairs != null && placeRatio(t.place, t.pairs) != null)
+    .sort((a, b) => (a.place ?? 0) - (b.place ?? 0))
+  const rel = places
+    .map((t) => placeRatio(t.place, t.pairs))
+    .filter((x): x is number => x != null)
+    .sort((a, b) => a - b)
   const matches = played.reduce((s, t) => s + (t.matchesPlayed ?? 0), 0)
   const wins = played.reduce((s, t) => s + (t.wins ?? 0), 0)
   const points = played.map((t) => (t.status === 'joue' && (t.fftResult?.status === 'ok' || t.fftResult?.status === 'override') ? (t.fftResult.points ?? 0) : computePoints({ date: t.date, category: (t.category || 'P25') as TCategory, gender: t.gender, pairs: t.pairs ?? null, place: t.place ?? null }).status === 'ok' ? (computePoints({ date: t.date, category: (t.category || 'P25') as TCategory, gender: t.gender, pairs: t.pairs ?? null, place: t.place ?? null }) as { status: 'ok'; points: number }).points : 0))

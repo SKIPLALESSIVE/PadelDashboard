@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, uid, deleteTournament, upsertTournament } from '../db/db'
 import { computePoints } from '../lib/fft/points'
+import { isIncoherentPlace } from '../lib/placement'
 import { fmtDate, parseMoney, toInputMoney } from '../lib/format'
 import { Modal } from './ui'
 import {
@@ -359,6 +360,13 @@ function Details({
           <input className="field" value={t.note ?? ''} onChange={(e) => patch({ note: e.target.value })} />
         </label>
       </div>
+
+      {isIncoherentPlace(t.place, t.pairs) && (
+        <p className="rounded-xl bg-amber-400/10 px-3 py-2 text-xs text-amber-300">
+          ⚠ Données incohérentes : la place ({t.place}) est supérieure au nombre de paires ({t.pairs}).
+          Saisissez le rang FFT retenu (rang d'ex æquo le moins avantageux), jamais un pourcentage.
+        </p>
+      )}
 
       {isJoue && (
         <div className="grid grid-cols-3 gap-3">

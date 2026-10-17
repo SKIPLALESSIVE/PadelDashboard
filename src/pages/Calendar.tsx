@@ -4,6 +4,7 @@ import { addMonths, format, getISOWeek, isSameMonth, isToday, setDate, parseISO 
 import { fr } from 'date-fns/locale'
 import { db, setAvailability, uid } from '../db/db'
 import { Card, Modal, StatusBadge } from '../components/ui'
+import { parseMoney, fmtMoney } from '../lib/format'
 import { EVENT_KINDS, type AvailabilityState, type CalendarEvent, type NonTournamentKind, type Tournament } from '../types'
 
 const AVA_LABELS: Record<Exclude<AvailabilityState, ''>, { label: string; dot: string; ring: string }> = {
@@ -197,10 +198,12 @@ function DayModal({
   onGoTournaments: () => void
 }) {
   const [av, setAv] = useLiveAvail(iso)
-  const [events, setEvents] = useLiveEvents(iso)
+  const events = useLiveEvents(iso)
   const [eventForm, setEventForm] = useState(false)
   const [label, setLabel] = useState('')
   const [kind, setKind] = useState<NonTournamentKind>('entrainement')
+  const [cost, setCost] = useState('')
+  const [paid, setPaid] = useState(true)
 
   const conflict = dayTournaments.length > 0 && av?.state === 'indisponible'
 
@@ -265,14 +268,25 @@ function DayModal({
           <span className="label">Événements (entraînement, stage…)</span>
           {(events ?? []).map((e) => (
             <div key={e.id} className="mb-1.5 flex items-center justify-between rounded-xl bg-slate-900/60 px-3 py-2 text-sm">
-              <span>
+              <span className="min-w-0 truncate">
                 {EVENT_KINDS.find((k) => k.id === e.kind)?.emoji} {e.label}
+                {e.cost ? (
+                  <button
+                    className={`ml-2 cursor-pointer chip ${e.paid ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-400/15 text-amber-300'}`}
+                    title="Bascule payé / prévu"
+                    onClick={async () => {
+                      const updated = { ...e, paid: !e.paid }
+                      await db.events.put(updated)
+                    }}
+                  >
+                    {fmtMoney(e.cost)} {e.paid ? '· payé ✓' : '· prévu'}
+                  </button>
+                ) : null}
               </span>
               <button
                 className="text-xs text-rose-300"
                 onClick={async () => {
                   await db.events.delete(e.id)
-                  setEvents((cur) => (cur ?? []).filter((x) => x.id !== e.id))
                 }}
               >
                 ✕
@@ -281,7 +295,7 @@ function DayModal({
           ))}
           {!eventForm ? (
             <button className="btn-ghost w-full" onClick={() => setEventForm(true)}>
-              + Événement
+              + Événement (entraînement, course, partie…)
             </button>
           ) : (
             <div className="mt-2 space-y-2 rounded-xl border border-line p-3">
@@ -292,15 +306,50 @@ function DayModal({
                   </option>
                 ))}
               </select>
-              <input className="field" placeholder="Libellé (ex. entraînement groupe)" value={label} onChange={(e) => setLabel(e.target.value)} />
+              <input className="field" placeholder="Libellé (ex. cours collectif)" value={label} onChange={(e) => setLabel(e.target.value)} />
+              <div className="grid grid-cols-2 gap-2">
+                <label className="block">
+                  <span className="label">Coût (€, optionnel)</span>
+                  <input
+                    className="field"
+                    inputMode="decimal"
+                    placeholder="ex. 20"
+                    value={cost}
+                    onChange={(e) => setCost(e.target.value)}
+                    aria-label="Coût de la séance"
+                  />
+                </label>
+                <div>
+                  <span className="label">Réglée ?</span>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={paid}
+                      onChange={(e) => setPaid(e.target.checked)}
+                      className="h-4 w-4 accent-lime-400"
+                      aria-label="Séance déjà payée"
+                    />
+                    {paid ? 'Payée' : 'Prévue (à payer)'}
+                  </label>
+                </div>
+              </div>
               <div className="flex gap-2">
                 <button
                   className="btn-primary flex-1"
                   onClick={async () => {
-                    const ev: CalendarEvent = { id: uid(), date: iso, kind, label: label.trim() || EVENT_KINDS.find((k) => k.id === kind)!.label }
+                    const cents = parseMoney(cost)
+                    const ev: CalendarEvent = {
+                      id: uid(),
+                      date: iso,
+                      kind,
+                      label: label.trim() || EVENT_KINDS.find((k) => k.id === kind)!.label,
+                      ...(cents > 0 ? { cost: cents, paid } : {}),
+                    }
                     await db.events.put(ev)
                     setEventForm(false)
                     setLabel('')
+                    setCost('')
+                    setPaid(false)
                   }}
                 >
                   Ajouter
@@ -329,10 +378,7 @@ function useLiveAvail(iso: string) {
 }
 
 function useLiveEvents(iso: string) {
-  const events = useLiveQuery(() => db.events.where('date').equals(iso).toArray(), [iso])
-  const setEvents = (_fn: (cur: CalendarEvent[] | undefined) => CalendarEvent[] | undefined) => {
-    /* no-op : useLiveQuery rafraîchit tout seul après mutation Dexie */
-  }
-  return [events, setEvents] as const
+  // useLiveQuery se rafraîchit seul après chaque mutation Dexie (put/delete events)
+  return useLiveQuery(() => db.events.where('date').equals(iso).toArray(), [iso])
 }
 

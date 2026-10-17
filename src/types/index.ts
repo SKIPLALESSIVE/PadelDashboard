@@ -182,6 +182,10 @@ export interface CalendarEvent {
   label: string
   note?: string
   time?: string
+  /** coût de la séance en centimes (cours, entraînement payant, partie, stage…) */
+  cost?: number
+  /** la séance est-elle payée ? sinon = prévu (dans le budget mais non réglé) */
+  paid?: boolean
 }
 
 export interface OfficialRanking {

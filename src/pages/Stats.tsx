@@ -5,6 +5,7 @@ import { PieChart, Pie, Cell, Legend, ResponsiveContainer, BarChart, Bar, XAxis,
 import { db } from '../db/db'
 import { Card, CardTitle, EmptyState, Stat } from '../components/ui'
 import { computePoints } from '../lib/fft/points'
+import { placeRatio } from '../lib/placement'
 import { tournamentMoney } from '../lib/finance'
 import { CATEGORIES, type TCategory, type Tournament } from '../types'
 
@@ -48,8 +49,11 @@ export default function Stats() {
   }, [tournaments, period, cat, gender, side])
 
   const played = filtered.filter((t) => t.status === 'joue')
-  const withPlace = played.filter((t) => t.place != null)
-  const relPlaces = withPlace.map((t) => (t.pairs ? t.place! / t.pairs : null)).filter((x): x is number => x != null)
+  // Places incohérentes (place > paires) exclues des moyennes
+  const withPlace = played.filter((t) => placeRatio(t.place, t.pairs) != null)
+  const relPlaces = withPlace
+    .map((t) => placeRatio(t.place, t.pairs))
+    .filter((x): x is number => x != null)
   const matches = played.reduce((s, t) => s + (t.matchesPlayed ?? 0), 0)
   const wins = played.reduce((s, t) => s + (t.wins ?? 0), 0)
   const moneyPaye = played.reduce((s, t) => s + tournamentMoney(t).paye, 0)
@@ -70,11 +74,11 @@ export default function Stats() {
   const sideData = useMemo(() => {
     const mk = (sideKey: 'droite' | 'gauche') => {
       const list = played.filter((t) => t.position === sideKey)
-      const pl = list.filter((t) => t.place != null && t.pairs)
+      const pl = list.filter((t) => placeRatio(t.place, t.pairs) != null)
       return {
         name: sideKey === 'droite' ? 'Droite' : 'Gauche',
         count: list.length,
-        relAvg: pl.length ? pl.reduce((s, t) => s + t.place! / t.pairs!, 0) / pl.length : null,
+        relAvg: pl.length ? pl.reduce((s, t) => s + placeRatio(t.place, t.pairs)!, 0) / pl.length : null,
         ptsAvg: pl.length
           ? pl.reduce((s, t) => s + pointsOf(t), 0) / pl.length
           : null,

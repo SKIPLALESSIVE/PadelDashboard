@@ -6,12 +6,34 @@ import { db, getSettings, saveSettings, upsertTournament } from '../db/db'
 import { Card, CardTitle, EmptyState, Stat, Modal } from '../components/ui'
 import { fmtMoney, fmtDateShort, toInputMoney } from '../lib/format'
 import { periodBudget, tournamentMoney } from '../lib/finance'
-import type { Tournament } from '../types'
+import { EVENT_KINDS, type CalendarEvent, type Tournament } from '../types'
+
+/** Budget des séances hors tournoi : entraînements, cours, parties, stages…
+ *  payé et prévu toujours séparés. */
+export function eventsBudget(events: CalendarEvent[], year: number, month?: number) {
+  const sel = events.filter((e) => {
+    if (!e.cost || Number(e.date.slice(0, 4)) !== year) return false
+    return month == null || Number(e.date.slice(5, 7)) === month + 1
+  })
+  const paye = sel.filter((e) => e.paid).reduce((s, e) => s + (e.cost ?? 0), 0)
+  const prevu = sel.filter((e) => !e.paid).reduce((s, e) => s + (e.cost ?? 0), 0)
+  const parType = EVENT_KINDS.map((k) => {
+    const list = sel.filter((e) => e.kind === k.id)
+    return {
+      ...k,
+      count: list.length,
+      paye: list.filter((e) => e.paid).reduce((s, e) => s + (e.cost ?? 0), 0),
+      prevu: list.filter((e) => !e.paid).reduce((s, e) => s + (e.cost ?? 0), 0),
+    }
+  }).filter((k) => k.count > 0)
+  return { paye, prevu, engagement: paye + prevu, parType, list: sel }
+}
 
 const MONTHS_FR = ['janv.', 'févr.', 'mars', 'avril', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.']
 
 export default function Finance() {
   const tournaments = useLiveQuery(() => db.tournaments.toArray(), []) ?? []
+  const events = useLiveQuery(() => db.events.toArray(), []) ?? []
   const [year, setYear] = useState(2027 >= new Date().getFullYear() ? new Date().getFullYear() : 2027)
   const [budgetModal, setBudgetModal] = useState(false)
   const [settings, setSettings] = useState<Awaited<ReturnType<typeof getSettings>> | null>(null)
@@ -25,13 +47,17 @@ export default function Finance() {
   const y2027 = useMemo(() => periodBudget(tournaments, 2027, undefined, { monthly: settings?.budgetMonthly ?? 0, year: settings?.budgetYear ?? 0 }), [tournaments, settings])
 
   const months = useMemo(() => {
-    const out: { label: string; paye: number; prevu: number }[] = []
+    const out: { label: string; paye: number; prevu: number; seances: number }[] = []
     for (let m = 0; m < 12; m++) {
       const b = periodBudget(tournaments, year, m, { monthly: settings?.budgetMonthly ?? 0, year: settings?.budgetYear ?? 0 })
-      out.push({ label: MONTHS_FR[m], paye: b.totalPaye / 100, prevu: b.totalPrevuNonEngage / 100 })
+      const ev = eventsBudget(events, year, m)
+      out.push({ label: MONTHS_FR[m], paye: b.totalPaye / 100, prevu: b.totalPrevuNonEngage / 100, seances: (ev.paye + ev.prevu) / 100 })
     }
     return out
-  }, [tournaments, year, settings])
+  }, [tournaments, events, year, settings])
+
+  // Budget séances hors tournoi (entraînements, cours, parties…) pour l'année sélectionnée
+  const seances = useMemo(() => eventsBudget(events, year), [events, year])
 
   const playedYoY = useMemo(() => {
     const list = tournaments.filter((t) => t.status === 'joue' && Number(t.date.slice(0, 4)) === year)
@@ -62,10 +88,19 @@ export default function Finance() {
       </div>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Stat value={fmtMoney(yearly.totalPaye)} label="dépense réelle (payé)" accent />
-        <Stat value={fmtMoney(yearly.totalPrevuNonEngage)} label="prévu non payé" sub="n'additionne jamais les deux" />
-        <Stat value={fmtMoney(yearly.engagement)} label="engagement total" sub={`budget ${year} : ${fmtMoney(yearly.budget)}`} />
-        <Stat value={yearly.restant >= 0 ? fmtMoney(yearly.restant) : `−${fmtMoney(yearly.depassement)}`} label={yearly.restant >= 0 ? 'budget restant' : 'dépassement'} accent={yearly.restant < 0} />
+        <Stat value={fmtMoney(yearly.totalPaye + seances.paye)} label="dépense réelle (payé)" sub={`dont ${fmtMoney(seances.paye)} de séances`} accent />
+        <Stat value={fmtMoney(yearly.totalPrevuNonEngage + seances.prevu)} label="prévu non payé" sub="n'additionne jamais les deux" />
+        <Stat
+          value={fmtMoney(yearly.engagement + seances.engagement)}
+          label="engagement total (tournois + séances)"
+          sub={`budget ${year} : ${fmtMoney(yearly.budget)}`}
+        />
+        <Stat
+          value={yearly.restant - seances.engagement >= 0 ? fmtMoney(yearly.restant - seances.engagement) : `−${fmtMoney(seances.engagement - yearly.restant)}`}
+          label={yearly.restant - seances.engagement >= 0 ? 'budget restant' : 'dépassement'}
+          sub="séances incluses"
+          accent={yearly.restant - seances.engagement < 0}
+        />
       </div>
 
       <Card>
@@ -78,14 +113,15 @@ export default function Finance() {
               <YAxis tick={{ fill: '#8ea0bd', fontSize: 11 }} />
               <Tooltip
                 contentStyle={{ background: '#101828', border: '1px solid #23304a', borderRadius: 8, color: '#e6ecf5' }}
-                formatter={(v: number, name) => [`${v.toFixed(0)} €`, name === 'paye' ? 'Payé' : 'Prévu']}
+                formatter={(v: number, name) => [`${v.toFixed(0)} €`, name === 'paye' ? 'Tournois payés' : name === 'prevu' ? 'Tournois prévus' : 'Séances']}
               />
               <Bar dataKey="paye" stackId="a" fill="#34d399" radius={[0, 0, 4, 4]} />
               <Bar dataKey="prevu" stackId="a" fill="#a3e63566" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="seances" stackId="a" fill="#60a5fa" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
-        <p className="mt-2 text-xs text-slate-500">Empilé : vert plein = déjà payé ; vert pâle = prévu non encore payé (jamais double compté).</p>
+        <p className="mt-2 text-xs text-slate-500">Empilé : vert plein = tournois payés ; vert pâle = prévu non payé ; bleu = séances (entraînements, cours, parties). Prévu et payé jamais additionnés deux fois.</p>
       </Card>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -97,6 +133,11 @@ export default function Finance() {
       {playedYoY.count > 0 && playedYoY.points === 0 && (
         <p className="text-xs text-amber-300">⚠ Coût par point indisponible : aucun résultat joué avec points saisis pour {year}.</p>
       )}
+
+      <Card>
+        <CardTitle>Séances hors tournoi — {year} (entraînements, cours, parties…)</CardTitle>
+        <SeancesBudget seances={seances} onChange={async () => setSettings(await getSettings())} />
+      </Card>
 
       <Card>
         <CardTitle>Détail par tournoi — {year}</CardTitle>
@@ -116,6 +157,73 @@ export default function Finance() {
           }}
         />
       )}
+    </div>
+  )
+}
+
+/** Carte séances hors tournoi : ventilation par type (cours, entraînement, partie…),
+ *  payé vs prévu, et bascule payé/prévu individuelle (le coût n'est jamais dupliqué). */
+function SeancesBudget({
+  seances,
+  onChange,
+}: {
+  seances: ReturnType<typeof eventsBudget>
+  onChange: () => void
+}) {
+  const togglePaid = async (e: CalendarEvent) => {
+    await db.events.put({ ...e, paid: !e.paid })
+    onChange()
+  }
+  if (seances.list.length === 0) {
+    return (
+      <EmptyState icon="🏏">
+        Ajoutez vos entraînements, cours et parties depuis le calendrier (clic sur un jour) avec leur coût : ils
+        alimentent ce budget, distinct des tournois.
+      </EmptyState>
+    )
+  }
+  return (
+    <div className="space-y-3">
+      {seances.parType.length > 0 && (
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
+          {seances.parType.map((k) => (
+            <div key={k.id} className="rounded-xl bg-slate-900/50 p-3">
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                {k.emoji} {k.label} ({k.count})
+              </div>
+              <div className="mt-1 text-sm">
+                <span className="text-emerald-300">{k.paye > 0 ? fmtMoney(k.paye) + ' payé' : ''}</span>
+                {k.paye > 0 && k.prevu > 0 ? ' · ' : ''}
+                <span>{k.prevu > 0 ? fmtMoney(k.prevu) + ' prévu' : ''}</span>
+              </div>
+              {k.paye === 0 && k.prevu === 0 && <div className="text-xs text-slate-500">sans coût saisi</div>}
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="space-y-1.5">
+        {seances.list
+          .slice()
+          .sort((a, b) => b.date.localeCompare(a.date))
+          .map((e) => (
+            <div key={e.id} className="flex items-center justify-between rounded-xl bg-slate-900/50 px-3 py-2 text-sm">
+              <span className="min-w-0 truncate">
+                {fmtDateShort(e.date)} · {EVENT_KINDS.find((k) => k.id === e.kind)?.emoji}{' '}
+                {e.label} — <b>{fmtMoney(e.cost ?? 0)}</b>
+              </span>
+              <button
+                className={`chip cursor-pointer ${e.paid ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-400/15 text-amber-300'}`}
+                onClick={() => void togglePaid(e)}
+                title="Basculer payé / prévu (le montant n'est jamais compté deux fois)"
+              >
+                {e.paid ? 'payé ✓' : 'prévu'}
+              </button>
+            </div>
+          ))}
+      </div>
+      <p className="text-xs text-slate-500">
+        Type par séance : cours (coach), entraînement, match amical (partie), stage, repos, déplacement.
+      </p>
     </div>
   )
 }
