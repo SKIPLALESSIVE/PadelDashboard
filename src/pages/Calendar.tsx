@@ -46,9 +46,13 @@ export default function CalendarPage({ onOpenCreate, onGoTournaments }: { onOpen
     return all.filter((a) => a.date.slice(0, 7) === from.slice(0, 7))
   }, [y, m])
 
+  // Filtrer sur « yyyy-MM » local (format y/m), PAS cur.toISOString() : en Europe/Paris
+  // le 1er du mois à minuit local devient le dernier jour du mois précédent en UTC,
+  // ce qui faisait disparaître les événements des cellules du calendrier.
+  const ym = `${y}-${String(m + 1).padStart(2, '0')}`
   const events = useLiveQuery(async () => {
     const all = await db.events.toArray()
-    return all.filter((e) => e.date.slice(0, 7) === cur.toISOString().slice(0, 7))
+    return all.filter((e) => e.date.slice(0, 7) === ym)
   }, [y, m])
 
   const [dayModal, setDayModal] = useState<string | null>(null)
